@@ -1,0 +1,46 @@
+---
+- name: SQL Server Health Check
+  hosts: sql_servers
+  gather_facts: no
+  vars:
+    sql_host: "{{ inventory_hostname }}"
+    sql_port: 1433
+    sql_user: "sa"             # Change to your SQL login
+    sql_password: "YourStrong!Passw0rd"  # Use Ansible Vault for security
+    sql_database: "master"
+
+  tasks:
+    - name: Ensure required collection is installed
+      ansible.builtin.meta: require_collection
+      collections:
+        - community.general
+
+    - name: Run SQL Server health check query
+      community.general.mssql_script:
+        login_host: "{{ sql_host }}"
+        login_port: "{{ sql_port }}"
+        login_user: "{{ sql_user }}"
+        login_password: "{{ sql_password }}"
+        database: "{{ sql_database }}"
+        script: |
+          -- Uptime
+          SELECT sqlserver_start_time AS 'SQL Server Start Time'
+          FROM sys.dm_os_sys_info;
+
+          -- Database statuses
+          SELECT name AS DatabaseName, state_desc AS Status
+          FROM sys.databases;
+
+          -- Always On AG health (if enabled)
+          IF EXISTS (SELECT * FROM sys.dm_hadr_availability_group_states)
+          BEGIN
+              SELECT ag.name AS AGName, ags.primary_replica, ags.synchronization_health_desc
+              FROM sys.availability_groups ag
+              JOIN sys.dm_hadr_availability_group_states ags
+              ON ag.group_id = ags.group_id;
+          END
+      register: sql_health
+
+    - name: Display SQL Server health check results
+      debug:
+        var: sql_health
